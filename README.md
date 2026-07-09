@@ -79,3 +79,16 @@ Start the Antigravity TUI or prompt `agy` directly:
 - *"Add a meeting with Sarah tomorrow at 10am for 1 hour about project launch"*
 - *"Reschedule my focus time tomorrow afternoon to 3pm"*
 - *"Cancel the lunch appointment on Friday"*
+
+---
+
+## 📅 Timetable Importer (`add_schedule.py`)
+
+Scribe includes a utility script to bulk import recurring university classes or recurring weekly schedules:
+- **Usage:** Run the script locally once you are authenticated:
+  ```bash
+  ./add_schedule.py
+  ```
+- **Configuration:** You can edit the classes list in `add_schedule.py` to change titles, days of the week, times, rooms, or instructors.
+- **Semester Boundaries:** Currently pre-configured to populate your 3rd Year 1st Semester from **June 29th, 2026** to **November 7th, 2026** with weekly recurrence rules.
+
