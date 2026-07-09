@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 import os
 import sys
+import warnings
+warnings.filterwarnings("ignore", category=FutureWarning)
+
 from datetime import datetime, timedelta
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
