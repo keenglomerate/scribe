@@ -1,0 +1,12 @@
+# Google OAuth secrets (Crucial: never commit these!)
+credentials.json
+token.json
+
+# Python Cache
+__pycache__/
+*.pyc
+
+# IDE and OS configurations
+.idea/
+.vscode/
+.DS_Store
