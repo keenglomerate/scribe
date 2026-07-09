@@ -41,6 +41,32 @@ def get_calendar_service():
             
     return build('calendar', 'v3', credentials=creds)
 
+def check_for_conflicts(service, start_time, end_time, ignore_event_id=None):
+    """Check if there are any events overlapping with the given start and end times."""
+    try:
+        events_result = service.events().list(
+            calendarId='primary',
+            timeMin=start_time,
+            timeMax=end_time,
+            singleEvents=True
+        ).execute()
+        events = events_result.get('items', [])
+        
+        conflicts = []
+        for event in events:
+            if ignore_event_id and event.get('id') == ignore_event_id:
+                continue
+            
+            event_start = event['start'].get('dateTime', event['start'].get('date'))
+            event_end = event['end'].get('dateTime', event['end'].get('date'))
+            
+            # Simple boundary check to ensure actual overlap
+            if event_start < end_time and event_end > start_time:
+                conflicts.append(f"'{event.get('summary', 'Untitled')}' ({event_start} - {event_end})")
+        return conflicts
+    except Exception:
+        return []
+
 # --- MCP TOOLS ---
 
 @mcp.tool()
@@ -107,6 +133,13 @@ def create_event(summary: str, start_time: str, end_time: str, description: str 
     """
     try:
         service = get_calendar_service()
+        
+        # Check for overlaps/conflicts
+        conflicts = check_for_conflicts(service, start_time, end_time)
+        conflict_warning = ""
+        if conflicts:
+            conflict_warning = "⚠️ Warning: This event conflicts with the following scheduled events:\n" + "\n".join(f"  - {c}" for c in conflicts) + "\n\n"
+            
         event_body = {
             'summary': summary,
             'start': {'dateTime': start_time},
@@ -119,7 +152,7 @@ def create_event(summary: str, start_time: str, end_time: str, description: str 
             
         created_event = service.events().insert(calendarId='primary', body=event_body).execute()
         return (
-            f"✅ Event created successfully!\n"
+            f"{conflict_warning}✅ Event created successfully!\n"
             f"Title: {created_event.get('summary')}\n"
             f"ID: {created_event.get('id')}\n"
             f"Link: {created_event.get('htmlLink')}"
@@ -138,6 +171,13 @@ def reschedule_event(event_id: str, start_time: str, end_time: str) -> str:
     """
     try:
         service = get_calendar_service()
+        
+        # Check for overlaps/conflicts (excluding the event we are rescheduling)
+        conflicts = check_for_conflicts(service, start_time, end_time, ignore_event_id=event_id)
+        conflict_warning = ""
+        if conflicts:
+            conflict_warning = "⚠️ Warning: The new time conflicts with the following scheduled events:\n" + "\n".join(f"  - {c}" for c in conflicts) + "\n\n"
+            
         event = service.events().get(calendarId='primary', eventId=event_id).execute()
         
         event['start']['dateTime'] = start_time
@@ -149,7 +189,7 @@ def reschedule_event(event_id: str, start_time: str, end_time: str) -> str:
         
         updated_event = service.events().update(calendarId='primary', eventId=event_id, body=event).execute()
         return (
-            f"✅ Event rescheduled successfully!\n"
+            f"{conflict_warning}✅ Event rescheduled successfully!\n"
             f"Title: {updated_event.get('summary')}\n"
             f"New Start: {start_time}\n"
             f"New End: {end_time}"
@@ -211,6 +251,90 @@ def search_events(query: str, max_results: int = 10) -> str:
         return "\n".join(output)
     except Exception as e:
         return f"❌ Error searching events: {e}"
+
+@mcp.tool()
+def find_free_slots(date: str, start_hour: int = 8, end_hour: int = 20) -> str:
+    """Find available free time slots on a specific date.
+    
+    Args:
+        date: The date to check in YYYY-MM-DD format (e.g. '2026-07-10').
+        start_hour: Hour of the day to start scanning (default 8 for 8:00 AM).
+        end_hour: Hour of the day to stop scanning (default 20 for 8:00 PM).
+    """
+    try:
+        service = get_calendar_service()
+        
+        # Parse time range in local time (Asia/Bangkok)
+        time_min = f"{date}T{start_hour:02d}:00:00+07:00"
+        time_max = f"{date}T{end_hour:02d}:00:00+07:00"
+        
+        events_result = service.events().list(
+            calendarId='primary',
+            timeMin=time_min,
+            timeMax=time_max,
+            singleEvents=True,
+            orderBy='startTime'
+        ).execute()
+        events = events_result.get('items', [])
+        
+        # Build busy intervals
+        busy_intervals = []
+        for event in events:
+            start = event['start'].get('dateTime')
+            end = event['end'].get('dateTime')
+            if start and end:
+                busy_intervals.append((start, end))
+                
+        # Find free slots
+        import datetime as dt
+        current_time = dt.datetime.fromisoformat(time_min)
+        limit_time = dt.datetime.fromisoformat(time_max)
+        
+        free_slots = []
+        for start, end in sorted(busy_intervals):
+            start_dt = dt.datetime.fromisoformat(start)
+            end_dt = dt.datetime.fromisoformat(end)
+            
+            if start_dt > current_time:
+                free_slots.append(f"- {current_time.strftime('%H:%M')} to {start_dt.strftime('%H:%M')}")
+            current_time = max(current_time, end_dt)
+            
+        if current_time < limit_time:
+            free_slots.append(f"- {current_time.strftime('%H:%M')} to {limit_time.strftime('%H:%M')}")
+            
+        if not free_slots:
+            return f"No free slots found between {start_hour:02d}:00 and {end_hour:02d}:00 on {date}."
+            
+        return f"⏰ Free slots on {date} ({start_hour:02d}:00 - {end_hour:02d}:00):\n" + "\n".join(free_slots)
+    except Exception as e:
+        return f"❌ Error finding free slots: {e}"
+
+@mcp.tool()
+def quick_add(text: str) -> str:
+    """Quickly add an event using natural language description.
+    
+    Args:
+        text: Natural language string describing the event (e.g. 'Dinner with Bob tomorrow at 6pm').
+    """
+    try:
+        service = get_calendar_service()
+        created_event = service.events().quickAdd(
+            calendarId='primary',
+            text=text
+        ).execute()
+        
+        start = created_event['start'].get('dateTime', created_event['start'].get('date'))
+        end = created_event['end'].get('dateTime', created_event['end'].get('date'))
+        
+        return (
+            f"⚡ Event added successfully via Quick Add!\n"
+            f"Title: {created_event.get('summary')}\n"
+            f"Time: {start} to {end}\n"
+            f"ID: {created_event.get('id')}\n"
+            f"Link: {created_event.get('htmlLink')}"
+        )
+    except Exception as e:
+        return f"❌ Error in Quick Add: {e}"
 
 if __name__ == "__main__":
     # Runs the stdio MCP server loop
