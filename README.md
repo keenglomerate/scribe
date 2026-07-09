@@ -9,10 +9,12 @@ Scribe is a **Model Context Protocol (MCP)** server that allows CLI AI assistant
 Once loaded by an AI client, Scribe registers the following tools:
 
 - **`list_events`:** View upcoming meetings and appointments.
-- **`create_event`:** Schedule new events (supports summaries, descriptions, date-times, and locations).
-- **`reschedule_event`:** Change the time range of an existing event ID.
+- **`create_event`:** Schedule new events (supports summaries, descriptions, date-times, locations, and returns **Smart Conflict Warnings** if slots overlap).
+- **`reschedule_event`:** Change the time range of an existing event ID (also returns **Smart Conflict Warnings** for overlaps).
 - **`delete_event`:** Remove/cancel an event.
 - **`search_events`:** Find appointments matching a free-text search query.
+- **`find_free_slots`:** Scan a specific date and return a list of available open time slots.
+- **`quick_add`:** Schedule events instantly using natural language parsing (e.g. "Lunch at 12pm tomorrow").
 
 ---
 
